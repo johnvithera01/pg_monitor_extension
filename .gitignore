@@ -1,0 +1,24 @@
+# Build artifacts
+*.o
+*.so
+*.dylib
+
+# PostgreSQL build
+regression.diffs
+regression.out
+results/
+
+# macOS
+.DS_Store
+*.swp
+*~
+
+# IDE
+.vscode/
+.idea/
+*.code-workspace
+
+# Temporary
+tmp/
+*.log
+*.bak

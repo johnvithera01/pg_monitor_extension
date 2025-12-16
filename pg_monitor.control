@@ -1,0 +1,6 @@
+# pg_monitor extension
+comment = 'pg_monitor - Advanced PostgreSQL monitoring'
+default_version = '0.9.0'
+module_pathname = '$libdir/pg_monitor'
+relocatable = false
+schema = 'pgmon'
