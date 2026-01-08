@@ -232,11 +232,13 @@ BEGIN
     RETURN QUERY
     SELECT 
         d.datname::TEXT,
-        ROUND(COALESCE(100.0 * blks_hit / NULLIF(blks_hit + blks_read, 0), 0), 2) as heap_hit_ratio,
-        ROUND(COALESCE(100.0 * idx_blks_hit / NULLIF(idx_blks_hit + idx_blks_read, 0), 0), 2) as index_hit_ratio,
+        ROUND(COALESCE(100.0 * d.blks_hit / NULLIF(d.blks_hit + d.blks_read, 0), 0), 2) as heap_hit_ratio,
+        ROUND(COALESCE(
+            (SELECT 100.0 * sum(idx_blks_hit) / NULLIF(sum(idx_blks_hit) + sum(idx_blks_read), 0) 
+             FROM pg_statio_user_indexes), 0), 2) as index_hit_ratio,
         CASE 
-            WHEN COALESCE(100.0 * blks_hit / NULLIF(blks_hit + blks_read, 0), 0) >= 95 THEN 'GOOD'
-            WHEN COALESCE(100.0 * blks_hit / NULLIF(blks_hit + blks_read, 0), 0) >= 90 THEN 'WARNING'
+            WHEN COALESCE(100.0 * d.blks_hit / NULLIF(d.blks_hit + d.blks_read, 0), 0) >= 95 THEN 'GOOD'
+            WHEN COALESCE(100.0 * d.blks_hit / NULLIF(d.blks_hit + d.blks_read, 0), 0) >= 90 THEN 'WARNING'
             ELSE 'CRITICAL'
         END as status
     FROM pg_stat_database d
@@ -262,14 +264,14 @@ BEGIN
         pg_size_pretty(pg_relation_size(c.oid)) as real_size,
         pg_size_pretty(GREATEST(pg_relation_size(c.oid) - 
             (c.reltuples * 
-                (SELECT avg(avg_width) FROM pg_stats WHERE schemaname = n.nspname AND tablename = c.relname)
+                (SELECT avg(ps.avg_width) FROM pg_stats ps WHERE ps.schemaname = n.nspname AND ps.tablename = c.relname)
             )::BIGINT, 0)) as bloat_size,
         ROUND(CASE 
             WHEN pg_relation_size(c.oid) = 0 THEN 0
             ELSE GREATEST(
                 (pg_relation_size(c.oid) - 
                     (c.reltuples * 
-                        COALESCE((SELECT avg(avg_width) FROM pg_stats WHERE schemaname = n.nspname AND tablename = c.relname), 100)
+                        COALESCE((SELECT avg(ps.avg_width) FROM pg_stats ps WHERE ps.schemaname = n.nspname AND ps.tablename = c.relname), 100)
                     )::BIGINT
                 )::NUMERIC / pg_relation_size(c.oid) * 100, 0)
         END, 2) as bloat_ratio
@@ -734,18 +736,21 @@ BEGIN
             FROM pgmon.repack_recommendations() t
         ),
         'recent_repack_history', (
-            SELECT COALESCE(jsonb_agg(jsonb_build_object(
-                'table', schema_name || '.' || table_name,
-                'executed_at', executed_at,
-                'size_before', pg_size_pretty(size_before_bytes),
-                'size_after', pg_size_pretty(size_after_bytes),
-                'reduction_percent', ROUND(100.0 * (size_before_bytes - size_after_bytes) / NULLIF(size_before_bytes, 0), 2),
-                'success', success
-            )), '[]'::jsonb)
-            FROM pgmon.repack_history
-            WHERE executed_at > now() - interval '30 days'
-            ORDER BY executed_at DESC
-            LIMIT 10
+            SELECT COALESCE(jsonb_agg(rh.data), '[]'::jsonb)
+            FROM (
+                SELECT jsonb_build_object(
+                    'table', schema_name || '.' || table_name,
+                    'executed_at', executed_at,
+                    'size_before', pg_size_pretty(size_before_bytes),
+                    'size_after', pg_size_pretty(size_after_bytes),
+                    'reduction_percent', ROUND(100.0 * (size_before_bytes - size_after_bytes) / NULLIF(size_before_bytes, 0), 2),
+                    'success', success
+                ) as data
+                FROM pgmon.repack_history
+                WHERE executed_at > now() - interval '30 days'
+                ORDER BY executed_at DESC
+                LIMIT 10
+            ) rh
         ),
         'summary', jsonb_build_object(
             'tables_need_repack', (SELECT count(*) FROM pgmon.repack_recommendations() WHERE priority <= 3),

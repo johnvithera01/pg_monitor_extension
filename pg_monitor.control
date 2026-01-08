@@ -1,6 +1,6 @@
 # pg_monitor extension
-comment = 'pg_monitor - Advanced PostgreSQL monitoring'
-default_version = '0.9.0'
+comment = 'PostgreSQL monitoring and CVE security detection extension'
+default_version = '0.10.0'
 module_pathname = '$libdir/pg_monitor'
 relocatable = false
 schema = 'pgmon'
